@@ -3,17 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 const WRAPPER_API_URL = 'https://api.zenzxz.my.id/ai/gemini';
 const API_KEY = process.env.API_KEY || 'a';
 
-function validateApiKey(request: NextRequest): boolean {
-  if (!API_KEY) return true;
-  
-  const authHeader = request.headers.get('authorization');
-  const apiKeyHeader = request.headers.get('x-api-key');
-  
-  const bearerToken = authHeader?.replace(/^Bearer\s+/i, '');
-  
-  return bearerToken === API_KEY || apiKeyHeader === API_KEY;
-}
-
 function chunkText(text: string, chunkSize: number = 20): string[] {
   const words = text.split(' ');
   const chunks: string[] = [];
@@ -33,9 +22,21 @@ function chunkText(text: string, chunkSize: number = 20): string[] {
 }
 
 export async function POST(request: NextRequest) {
-  if (!validateApiKey(request)) {
+  const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
+  const apiKeyHeader = request.headers.get('x-api-key') || request.headers.get('X-Api-Key');
+  
+  const bearerToken = authHeader?.replace(/^Bearer\s+/i, '').trim();
+  const providedKey = bearerToken || apiKeyHeader;
+  
+  if (API_KEY && (!providedKey || providedKey !== API_KEY)) {
     return NextResponse.json(
-      { error: { message: 'Invalid or missing API key', type: 'invalid_request_error' } },
+      {
+        error: {
+          message: 'Incorrect API key provided',
+          type: 'authentication_error',
+          code: 'invalid_api_key'
+        }
+      },
       { status: 401 }
     );
   }
@@ -43,7 +44,20 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const { messages, model, stream, ...extra } = body;
+    if (!body.messages || !Array.isArray(body.messages)) {
+      return NextResponse.json(
+        {
+          error: {
+            message: 'messages is required',
+            type: 'invalid_request_error',
+            code: 'missing_required_field'
+          }
+        },
+        { status: 400 }
+      );
+    }
+    
+    const { messages, model, stream, temperature, top_p, ...extra } = body;
     
     const lastMessage = messages?.[messages.length - 1];
     const systemMessage = messages?.find((m: any) => m.role === 'system');
