@@ -1,0 +1,156 @@
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "cerebras": {
+        "baseUrl": "https://api.cerebras.ai/v1",
+        "apiKey": "csk-vd3p9twtkxrcet3chhh3myje8nv4phvn5n6e9kyctth63hw2",
+        "auth": "api-key",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "qwen-3-235b-a22b-instruct-2507",
+            "name": "Qwen-3-235B",
+            "api": "openai-completions",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          },
+          {
+            "id": "llama3.1-8b",
+            "name": "Llama3.1-8B",
+            "api": "openai-completions",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          }
+        ]
+      },
+      "openrouter": {
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "apiKey": "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",
+        "auth": "api-key",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "nvidia/nemotron-3-super-120b-a12b:free",
+            "name": "Nemotron-3-Super-120B",
+            "api": "openai-completions",
+            "reasoning": true,
+            "input": ["text"],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 262144,
+            "maxTokens": 8192
+          },
+          {
+            "id": "nvidia/nemotron-3-nano-30b-a3b:free",
+            "name": "Nemotron-3-Nano-30B",
+            "api": "openai-completions",
+            "reasoning": true,
+            "input": ["text"],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 256000,
+            "maxTokens": 8192
+          },
+          {
+            "id": "arcee-ai/trinity-mini:free",
+            "name": "Arcee-Trinity-Mini",
+            "api": "openai-completions",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          },
+          {
+            "id": "openrouter/free",
+            "name": "Auto-Select",
+            "api": "openai-completions",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 200000,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "provider": "cerebras",
+        "id": "qwen-3-235b-a22b-instruct-2507"
+      },
+      "models": {
+        "cerebras/qwen-3-235b-a22b-instruct-2507": {},
+        "cerebras/llama3.1-8b": {},
+        "openrouter/nvidia/nemotron-3-super-120b-a12b:free": {},
+        "openrouter/nvidia/nemotron-3-nano-30b-a3b:free": {}
+      },
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "workspace": "/home/clawdbot/workspace",
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    },
+    "messages": {
+      "ackReactionScope": "group-mentions"
+    },
+    "commands": {
+      "native": "auto",
+      "nativeSkills": "auto",
+      "restart": true
+    },
+    "gateway": {
+      "controlUi": {
+        "enabled": true,
+        "allowInsecureAuth": true
+      }
+    },
+    "plugins": {
+      "entries": {
+        "telegram": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}

@@ -1,12 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const WRAPPER_API_URL = 'https://api.zenzxz.my.id/ai/gemini';
+const API_KEY = process.env.API_KEY || 'a';
+
+function validateApiKey(request: NextRequest): boolean {
+  if (!API_KEY) return true;
+  
+  const authHeader = request.headers.get('authorization');
+  const apiKeyHeader = request.headers.get('x-api-key');
+  
+  const bearerToken = authHeader?.replace(/^Bearer\s+/i, '');
+  
+  return bearerToken === API_KEY || apiKeyHeader === API_KEY;
+}
+
+function chunkText(text: string, chunkSize: number = 20): string[] {
+  const words = text.split(' ');
+  const chunks: string[] = [];
+  let currentChunk = '';
+  
+  for (const word of words) {
+    if ((currentChunk + ' ' + word).trim().length >= chunkSize) {
+      if (currentChunk) chunks.push(currentChunk.trim());
+      currentChunk = word;
+    } else {
+      currentChunk = (currentChunk + ' ' + word).trim();
+    }
+  }
+  if (currentChunk) chunks.push(currentChunk.trim());
+  
+  return chunks;
+}
 
 export async function POST(request: NextRequest) {
+  if (!validateApiKey(request)) {
+    return NextResponse.json(
+      { error: { message: 'Invalid or missing API key', type: 'invalid_request_error' } },
+      { status: 401 }
+    );
+  }
+  
   try {
     const body = await request.json();
     
-    const { messages, model, ...extra } = body;
+    const { messages, model, stream, ...extra } = body;
     
     const lastMessage = messages?.[messages.length - 1];
     const systemMessage = messages?.find((m: any) => m.role === 'system');
@@ -46,25 +83,85 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    const content = data.result;
+    const created = Math.floor(Date.now() / 1000);
+    const completionId = `chatcmpl-${Date.now()}`;
+    
+    if (stream) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const chunks = chunkText(content, 25);
+          
+          for (let i = 0; i < chunks.length; i++) {
+            const chunkData = {
+              id: completionId,
+              object: 'chat.completion.chunk',
+              created,
+              model: targetModel,
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    content: chunks[i] + (i < chunks.length - 1 ? ' ' : ''),
+                  },
+                  finish_reason: null,
+                },
+              ],
+            };
+            
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunkData)}\n\n`));
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+          
+          const finalChunk = {
+            id: completionId,
+            object: 'chat.completion.chunk',
+            created,
+            model: targetModel,
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: 'stop',
+              },
+            ],
+          };
+          
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+      
+      return new NextResponse(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+    
     return NextResponse.json({
-      id: `chatcmpl-${Date.now()}`,
+      id: completionId,
       object: 'chat.completion',
-      created: Math.floor(Date.now() / 1000),
+      created,
       model: targetModel,
       choices: [
         {
           index: 0,
           message: {
             role: 'assistant',
-            content: data.result,
+            content,
           },
           finish_reason: 'stop',
         },
       ],
       usage: {
         prompt_tokens: q.split(/\s+/).length,
-        completion_tokens: data.result?.split(/\s+/).length || 0,
-        total_tokens: (q.split(/\s+/).length + (data.result?.split(/\s+/).length || 0)),
+        completion_tokens: content?.split(/\s+/).length || 0,
+        total_tokens: (q.split(/\s+/).length + (content?.split(/\s+/).length || 0)),
       },
     });
     
