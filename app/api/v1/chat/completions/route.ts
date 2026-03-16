@@ -1,3 +1,4 @@
+// APIZen - Gemini OpenAI Wrapper
 import { NextRequest, NextResponse } from 'next/server';
 
 const WRAPPER_API_URL = 'https://api.zenzxz.my.id/ai/gemini';
