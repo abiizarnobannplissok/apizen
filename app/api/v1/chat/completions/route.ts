@@ -125,31 +125,35 @@ export async function POST(request: NextRequest) {
     
     if (stream) {
       const encoder = new TextEncoder();
-      const stream = new ReadableStream({
+      const responseStream = new ReadableStream({
         async start(controller) {
-          const chunks = chunkText(content, 25);
-          
-          for (let i = 0; i < chunks.length; i++) {
-            const chunkData = {
-              id: completionId,
-              object: 'chat.completion.chunk',
-              created,
-              model: targetModel,
-              choices: [
-                {
-                  index: 0,
-                  delta: {
-                    content: chunks[i] + (i < chunks.length - 1 ? ' ' : ''),
-                  },
-                  finish_reason: null,
-                },
-              ],
-            };
+          // Send first chunk with content
+          if (content && content.length > 0) {
+            const chunks = chunkText(content, 25);
             
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunkData)}\n\n`));
-            await new Promise(resolve => setTimeout(resolve, 50));
+            for (let i = 0; i < chunks.length; i++) {
+              const chunkData = {
+                id: completionId,
+                object: 'chat.completion.chunk',
+                created,
+                model: targetModel,
+                choices: [
+                  {
+                    index: 0,
+                    delta: {
+                      content: chunks[i] + (i < chunks.length - 1 ? ' ' : ''),
+                    },
+                    finish_reason: null,
+                  },
+                ],
+              };
+              
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunkData)}\n\n`));
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
           }
           
+          // Send final chunk with finish_reason
           const finalChunk = {
             id: completionId,
             object: 'chat.completion.chunk',
@@ -170,7 +174,7 @@ export async function POST(request: NextRequest) {
         },
       });
       
-      return new NextResponse(stream, {
+      return new NextResponse(responseStream, {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
