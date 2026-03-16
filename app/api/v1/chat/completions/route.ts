@@ -60,9 +60,23 @@ export async function POST(request: NextRequest) {
     const { messages, model, stream, temperature, top_p, ...extra } = body;
     
     const lastMessage = messages?.[messages.length - 1];
-    const systemMessage = messages?.find((m: any) => m.role === 'system');
+    const systemMessage = messages?.find((m: any) => m.role === 'system' || m.role === 'developer');
     
     const q = lastMessage?.content || '';
+    
+    if (!q || q.trim() === '') {
+      return NextResponse.json(
+        {
+          error: {
+            message: 'message content is required',
+            type: 'invalid_request_error',
+            code: 'missing_required_field'
+          }
+        },
+        { status: 400 }
+      );
+    }
+    
     const instruction = systemMessage?.content || extra.instruction || '';
     const url = extra.url || '';
     
@@ -98,6 +112,14 @@ export async function POST(request: NextRequest) {
     }
     
     const content = data.result;
+    
+    if (!content) {
+      return NextResponse.json(
+        { error: { message: 'Empty response from API', type: 'api_error' } },
+        { status: 500 }
+      );
+    }
+    
     const created = Math.floor(Date.now() / 1000);
     const completionId = `chatcmpl-${Date.now()}`;
     
