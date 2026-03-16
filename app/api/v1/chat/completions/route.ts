@@ -42,7 +42,36 @@ export async function POST(request: NextRequest) {
   }
   
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      const text = await request.text();
+      console.error('JSON parse error. Raw body:', text);
+      return NextResponse.json(
+        {
+          error: {
+            message: 'Invalid JSON in request body',
+            type: 'invalid_request_error',
+            code: 'json_parse_error'
+          }
+        },
+        { status: 400 }
+      );
+    }
+    
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json(
+        {
+          error: {
+            message: 'Invalid request body',
+            type: 'invalid_request_error',
+            code: 'invalid_request'
+          }
+        },
+        { status: 400 }
+      );
+    }
     
     if (!body.messages || !Array.isArray(body.messages)) {
       return NextResponse.json(
