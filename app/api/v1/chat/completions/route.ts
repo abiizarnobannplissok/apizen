@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 const WRAPPER_API_URL = 'https://api.zenzxz.my.id/ai/gemini';
 const API_KEY = process.env.API_KEY || 'a';
 
+// Check if authentication should be bypassed (when API_KEY is empty or disabled)
+const AUTH_DISABLED = !API_KEY || API_KEY === '';
+
 function chunkText(text: string, chunkSize: number = 20): string[] {
   const words = text.split(' ');
   const chunks: string[] = [];
@@ -22,23 +25,40 @@ function chunkText(text: string, chunkSize: number = 20): string[] {
   return chunks;
 }
 
+// CORS headers for all responses
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key',
+  'Access-Control-Max-Age': '86400',
+};
+
+// Helper to create consistent error responses
+function errorResponse(message: string, type: string, code: string, status: number) {
+  return NextResponse.json(
+    { error: { message, type, code } },
+    { status, headers: corsHeaders }
+  );
+}
+
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
   const apiKeyHeader = request.headers.get('x-api-key') || request.headers.get('X-Api-Key');
+  const acceptHeader = request.headers.get('accept');
   
   const bearerToken = authHeader?.replace(/^Bearer\s+/i, '').trim();
   const providedKey = bearerToken || apiKeyHeader;
   
-  if (API_KEY && (!providedKey || providedKey !== API_KEY)) {
-    return NextResponse.json(
-      {
-        error: {
-          message: 'Incorrect API key provided',
-          type: 'authentication_error',
-          code: 'invalid_api_key'
-        }
-      },
-      { status: 401 }
+  // Check if client prefers JSON (not SSE streaming)
+  const prefersJSON = acceptHeader?.includes('application/json') || !acceptHeader?.includes('text/event-stream');
+  
+  // Authentication check - skip if AUTH_DISABLED
+  if (!AUTH_DISABLED && (!providedKey || providedKey !== API_KEY)) {
+    return errorResponse(
+      'Incorrect API key provided',
+      'authentication_error',
+      'invalid_api_key',
+      401
     );
   }
   
@@ -49,45 +69,40 @@ export async function POST(request: NextRequest) {
     } catch (parseError) {
       const text = await request.text();
       console.error('JSON parse error. Raw body:', text);
-      return NextResponse.json(
-        {
-          error: {
-            message: 'Invalid JSON in request body',
-            type: 'invalid_request_error',
-            code: 'json_parse_error'
-          }
-        },
-        { status: 400 }
+      return errorResponse(
+        'Invalid JSON in request body',
+        'invalid_request_error',
+        'json_parse_error',
+        400
       );
     }
     
+    // Check if streaming is explicitly requested
+    const shouldStream = body?.stream === true;
+    
     if (!body || typeof body !== 'object') {
-      return NextResponse.json(
-        {
-          error: {
-            message: 'Invalid request body',
-            type: 'invalid_request_error',
-            code: 'invalid_request'
-          }
-        },
-        { status: 400 }
+      return errorResponse(
+        'Invalid request body',
+        'invalid_request_error',
+        'invalid_request',
+        400
       );
     }
     
     if (!body.messages || !Array.isArray(body.messages)) {
-      return NextResponse.json(
-        {
-          error: {
-            message: 'messages is required',
-            type: 'invalid_request_error',
-            code: 'missing_required_field'
-          }
-        },
-        { status: 400 }
+      return errorResponse(
+        'messages is required',
+        'invalid_request_error',
+        'missing_required_field',
+        400
       );
     }
     
     const { messages, model, stream, temperature, top_p, ...extra } = body;
+    
+    // Force non-streaming if client prefers JSON (handles SDKs that don't specify stream param)
+    const forceNonStream = prefersJSON && stream !== true;
+    const isStreaming = stream === true && !forceNonStream;
     
     const lastMessage = messages?.[messages.length - 1];
     const systemMessage = messages?.find((m: any) => m.role === 'system' || m.role === 'developer');
@@ -103,7 +118,7 @@ export async function POST(request: NextRequest) {
             code: 'missing_required_field'
           }
         },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
     
@@ -132,28 +147,64 @@ export async function POST(request: NextRequest) {
       },
     });
     
-    const data = await response.json();
+    // Check if the response is OK
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Upstream API error:', response.status, errorText);
+      return errorResponse(
+        errorText || 'Upstream API error',
+        'api_error',
+        'upstream_error',
+        502
+      );
+    }
+    
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      console.error('Failed to parse upstream API response');
+      return errorResponse(
+        'Invalid response from upstream API',
+        'api_error',
+        'parse_error',
+        502
+      );
+    }
+    
+    if (!data || typeof data !== 'object') {
+      return errorResponse(
+        'Invalid response format from upstream API',
+        'api_error',
+        'invalid_response',
+        502
+      );
+    }
     
     if (!data.status) {
-      return NextResponse.json(
-        { error: { message: data.result || 'API error', type: 'api_error' } },
-        { status: 500 }
+      return errorResponse(
+        data.message || data.result || 'API error',
+        'api_error',
+        'upstream_error',
+        500
       );
     }
     
     const content = data.result;
     
-    if (!content) {
-      return NextResponse.json(
-        { error: { message: 'Empty response from API', type: 'api_error' } },
-        { status: 500 }
+    if (!content || (typeof content === 'string' && content.trim() === '')) {
+      return errorResponse(
+        'Empty response from API',
+        'api_error',
+        'empty_response',
+        500
       );
     }
     
     const created = Math.floor(Date.now() / 1000);
     const completionId = `chatcmpl-${Date.now()}`;
     
-    if (stream) {
+    if (isStreaming) {
       const encoder = new TextEncoder();
       const responseStream = new ReadableStream({
         async start(controller) {
@@ -206,9 +257,11 @@ export async function POST(request: NextRequest) {
       
       return new NextResponse(responseStream, {
         headers: {
-          'Content-Type': 'text/event-stream',
+          'Content-Type': 'text/event-stream; charset=utf-8',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no',
+          ...corsHeaders,
         },
       });
     }
@@ -233,12 +286,15 @@ export async function POST(request: NextRequest) {
         completion_tokens: content?.split(/\s+/).length || 0,
         total_tokens: (q.split(/\s+/).length + (content?.split(/\s+/).length || 0)),
       },
-    });
+    }, { headers: corsHeaders });
     
   } catch (error: any) {
-    return NextResponse.json(
-      { error: { message: error.message || 'Internal server error', type: 'invalid_request_error' } },
-      { status: 500 }
+    console.error('Unexpected error:', error);
+    return errorResponse(
+      error.message || 'Internal server error',
+      'internal_error',
+      'server_error',
+      500
     );
   }
 }
@@ -246,6 +302,13 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json(
     { error: { message: 'Method not allowed. Use POST.', type: 'invalid_request_error' } },
-    { status: 405 }
+    { status: 405, headers: corsHeaders }
   );
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
 }

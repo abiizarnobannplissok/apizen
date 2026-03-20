@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "apizen/gemini-3-flash-preview",
+  "provider": {
+    "apizen": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "APIZen",
+      "options": {
+        "baseURL": "https://apizen-iota.vercel.app/v1",
+        "apiKey": "a",
+        "headers": {
+          "Authorization": "Bearer a"
+        }
+      },
+      "models": {
+        "gemini-3-flash-preview": {
+          "name": "gemini-3-flash-preview"
+        }
+      }
+    }
+  }
+}
