@@ -115,7 +115,11 @@ export async function POST(request: NextRequest) {
     const lastMessage = messages?.[messages.length - 1];
     const systemMessage = messages?.find((m: any) => m.role === 'system' || m.role === 'developer');
     
-    let q = lastMessage?.content || '';
+    // Ensure content is always a string
+    let q = '';
+    if (lastMessage?.content) {
+      q = typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
+    }
     
     // Truncate query if too long (URL has ~2000 char limit)
     if (q.length > 1500) {
@@ -135,7 +139,15 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const instruction = systemMessage?.content || extra.instruction || '';
+    // Ensure instruction is always a string
+    let instruction = '';
+    if (systemMessage?.content) {
+      instruction = typeof systemMessage.content === 'string' ? systemMessage.content : JSON.stringify(systemMessage.content);
+    }
+    // Also check extra.instruction if instruction is empty
+    if (!instruction && extra.instruction) {
+      instruction = typeof extra.instruction === 'string' ? extra.instruction : JSON.stringify(extra.instruction);
+    }
     const url = extra.url || '';
     
     const targetModel = model || extra.model || 'gemini-3-flash-preview';
@@ -224,7 +236,12 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const content = data.result;
+    let content = data.result;
+    
+    // Ensure content is always a string
+    if (content && typeof content !== 'string') {
+      content = JSON.stringify(content);
+    }
     
     if (!content || (typeof content === 'string' && content.trim() === '')) {
       return errorResponse(
