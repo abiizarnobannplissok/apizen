@@ -140,32 +140,57 @@ export async function POST(request: NextRequest) {
       params.append('url', url);
     }
     
-    const response = await fetch(`${WRAPPER_API_URL}?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+    let response;
+    try {
+      response = await fetch(`${WRAPPER_API_URL}?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+    } catch (networkError: any) {
+      console.error('Network error calling upstream API:', networkError.message);
+      return errorResponse(
+        'Failed to connect to upstream API: ' + networkError.message,
+        'api_error',
+        'network_error',
+        502
+      );
+    }
     
     // Check if the response is OK
     if (!response.ok) {
-      const errorText = await response.text();
+      let errorText;
+      try {
+        errorText = await response.text();
+      } catch {
+        errorText = 'Unknown error';
+      }
       console.error('Upstream API error:', response.status, errorText);
-      return errorResponse(
-        errorText || 'Upstream API error',
-        'api_error',
-        'upstream_error',
-        502
+      // Make sure we return valid JSON even for error cases
+      return NextResponse.json(
+        { error: { message: `Upstream API error (${response.status})`, type: 'api_error', code: 'upstream_error' } },
+        { status: 502, headers: corsHeaders }
       );
     }
     
     let data;
     try {
-      data = await response.json();
-    } catch (parseError) {
-      console.error('Failed to parse upstream API response');
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        console.error('Empty response from upstream API');
+        return errorResponse(
+          'Empty response from upstream API',
+          'api_error',
+          'empty_response',
+          502
+        );
+      }
+      data = JSON.parse(text);
+    } catch (parseError: any) {
+      console.error('Failed to parse upstream API response:', parseError.message);
       return errorResponse(
-        'Invalid response from upstream API',
+        'Invalid JSON response from upstream API',
         'api_error',
         'parse_error',
         502
