@@ -136,26 +136,21 @@ export async function POST(request: NextRequest) {
     
     const targetModel = model || extra.model || 'gemini-3-flash-preview';
     
-    const params = new URLSearchParams({
-      q,
-      model: targetModel,
-    });
-    
-    if (instruction) {
-      params.append('instruction', instruction);
-    }
-    
-    if (url) {
-      params.append('url', url);
-    }
-    
     let response;
     try {
-      response = await fetch(`${WRAPPER_API_URL}?${params.toString()}`, {
-        method: 'GET',
+      // Use POST request with body instead of GET with URL params
+      response = await fetch(WRAPPER_API_URL, {
+        method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
+        body: JSON.stringify({
+          q,
+          instruction: instruction || undefined,
+          url: url || undefined,
+          model: targetModel,
+        }),
       });
     } catch (networkError: any) {
       console.error('Network error calling upstream API:', networkError.message);
