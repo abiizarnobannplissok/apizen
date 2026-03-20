@@ -109,9 +109,8 @@ export async function POST(request: NextRequest) {
     
     const { messages, model, stream, temperature, top_p, ...extra } = body;
     
-    // Force non-streaming if client prefers JSON (handles SDKs that don't specify stream param)
-    const forceNonStream = prefersJSON && stream !== true;
-    const isStreaming = stream === true && !forceNonStream;
+    // Always use non-streaming for reliability (upstream API doesn't support streaming well)
+    const isStreaming = false;
     
     const lastMessage = messages?.[messages.length - 1];
     const systemMessage = messages?.find((m: any) => m.role === 'system' || m.role === 'developer');
