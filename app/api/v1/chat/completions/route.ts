@@ -116,7 +116,12 @@ export async function POST(request: NextRequest) {
     const lastMessage = messages?.[messages.length - 1];
     const systemMessage = messages?.find((m: any) => m.role === 'system' || m.role === 'developer');
     
-    const q = lastMessage?.content || '';
+    let q = lastMessage?.content || '';
+    
+    // Truncate query if too long (URL has ~2000 char limit)
+    if (q.length > 1500) {
+      q = q.substring(0, 1500) + '...';
+    }
     
     if (!q || q.trim() === '') {
       return NextResponse.json(
@@ -136,21 +141,22 @@ export async function POST(request: NextRequest) {
     
     const targetModel = model || extra.model || 'gemini-3-flash-preview';
     
+    const params = new URLSearchParams({
+      q,
+      model: targetModel,
+    });
+    
+    if (instruction) {
+      params.append('instruction', instruction.substring(0, 500));
+    }
+    
     let response;
     try {
-      // Use POST request with body instead of GET with URL params
-      response = await fetch(WRAPPER_API_URL, {
-        method: 'POST',
+      response = await fetch(`${WRAPPER_API_URL}?${params.toString()}`, {
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({
-          q,
-          instruction: instruction || undefined,
-          url: url || undefined,
-          model: targetModel,
-        }),
       });
     } catch (networkError: any) {
       console.error('Network error calling upstream API:', networkError.message);
@@ -233,6 +239,9 @@ export async function POST(request: NextRequest) {
     const created = Math.floor(Date.now() / 1000);
     const completionId = `chatcmpl-${Date.now()}`;
     
+    // Use q (already truncated) for token counting
+    const tokenCountQ = q.split(/\s+/).length;
+    
     if (isStreaming) {
       const encoder = new TextEncoder();
       const responseStream = new ReadableStream({
@@ -311,9 +320,9 @@ export async function POST(request: NextRequest) {
         },
       ],
       usage: {
-        prompt_tokens: q.split(/\s+/).length,
+        prompt_tokens: tokenCountQ,
         completion_tokens: content?.split(/\s+/).length || 0,
-        total_tokens: (q.split(/\s+/).length + (content?.split(/\s+/).length || 0)),
+        total_tokens: (tokenCountQ + (content?.split(/\s+/).length || 0)),
       },
     }, { headers: corsHeaders });
     
