@@ -64,11 +64,20 @@ export async function POST(request: NextRequest) {
   
   try {
     let body;
+    let rawBody = '';
+    
+    // Clone request to allow reading body multiple times
+    const clonedRequest = request.clone();
+    
     try {
       body = await request.json();
     } catch (parseError) {
-      const text = await request.text();
-      console.error('JSON parse error. Raw body:', text);
+      try {
+        rawBody = await clonedRequest.text();
+      } catch {
+        rawBody = 'Unable to read body';
+      }
+      console.error('JSON parse error. Raw body:', rawBody.substring(0, 500));
       return errorResponse(
         'Invalid JSON in request body',
         'invalid_request_error',
