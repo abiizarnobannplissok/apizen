@@ -112,13 +112,52 @@ export async function POST(request: NextRequest) {
     // Enable streaming when client requests it (for OpenClaw SSE support)
     const isStreaming = stream === true;
     
-    const lastMessage = messages?.[messages.length - 1];
     const systemMessage = messages?.find((m: any) => m.role === 'system' || m.role === 'developer');
     
-    // Ensure content is always a string
+    // Build conversation context from all messages (for multi-turn chat)
     let q = '';
-    if (lastMessage?.content) {
-      q = typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
+    
+    if (messages && messages.length > 0) {
+      // Extract system/instruction context
+      let instruction = '';
+      if (systemMessage?.content) {
+        instruction = typeof systemMessage.content === 'string' 
+          ? systemMessage.content 
+          : JSON.stringify(systemMessage.content);
+      }
+      
+      // Build conversation history string
+      const conversationParts: string[] = [];
+      
+      for (const msg of messages) {
+        if (msg.role === 'system' || msg.role === 'developer') continue; // Handle separately
+        if (!msg.content) continue;
+        
+        const content = typeof msg.content === 'string' 
+          ? msg.content 
+          : JSON.stringify(msg.content);
+        
+        switch (msg.role) {
+          case 'user':
+            conversationParts.push(`User: ${content}`);
+            break;
+          case 'assistant':
+            conversationParts.push(`Assistant: ${content}`);
+            break;
+          case 'tool':
+            conversationParts.push(`[Tool Result]: ${content}`);
+            break;
+          default:
+            conversationParts.push(`${msg.role}: ${content}`);
+        }
+      }
+      
+      q = conversationParts.join('\n');
+      
+      // Add instruction prefix if exists
+      if (instruction) {
+        q = `Instructions: ${instruction}\n\n${q}`;
+      }
     }
     
     // Truncate query if too long (URL has ~2000 char limit)
@@ -139,27 +178,12 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Ensure instruction is always a string
-    let instruction = '';
-    if (systemMessage?.content) {
-      instruction = typeof systemMessage.content === 'string' ? systemMessage.content : JSON.stringify(systemMessage.content);
-    }
-    // Also check extra.instruction if instruction is empty
-    if (!instruction && extra.instruction) {
-      instruction = typeof extra.instruction === 'string' ? extra.instruction : JSON.stringify(extra.instruction);
-    }
-    const url = extra.url || '';
-    
     const targetModel = model || extra.model || 'gemini-3-flash-preview';
     
     const params = new URLSearchParams({
       q,
       model: targetModel,
     });
-    
-    if (instruction) {
-      params.append('instruction', instruction.substring(0, 500));
-    }
     
     let response;
     try {
