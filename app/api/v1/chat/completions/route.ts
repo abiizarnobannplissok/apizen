@@ -109,8 +109,8 @@ export async function POST(request: NextRequest) {
     
     const { messages, model, stream, temperature, top_p, ...extra } = body;
     
-    // Always use non-streaming for reliability (upstream API doesn't support streaming well)
-    const isStreaming = false;
+    // Enable streaming when client requests it (for OpenClaw SSE support)
+    const isStreaming = stream === true;
     
     const lastMessage = messages?.[messages.length - 1];
     const systemMessage = messages?.find((m: any) => m.role === 'system' || m.role === 'developer');
